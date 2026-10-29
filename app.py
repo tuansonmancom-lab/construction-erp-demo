@@ -2770,7 +2770,7 @@ def render_full_application(conn):
 # Standalone runner
 #if __name__ == "__main__":
 #    st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-#    st.title("🏗️DEMO CONSTRUCTION - Procurement & Inventory")
+#    st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
 #    db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
 #    render_full_application(db_conn)
 
@@ -5755,7 +5755,7 @@ if not st.session_state.logged_in and query_user and last_active_str:
 
 # --- LOGIN SCREEN (IF NOT LOGGED IN) ---
 if not st.session_state.logged_in:
-    st.title("🏗️️DEMO CONSTRUCTION Enterprise System")
+    st.title("🛠️📦DEMO CONSTRUCTION Enterprise System")
     st.caption("Integrated Procurement, Inventory & Double-Entry Accounting System")
     st.write("---")
 
@@ -5826,7 +5826,7 @@ if not st.session_state.logged_in:
 st.query_params["user"] = st.session_state.current_user
 st.query_params["last_active"] = datetime.now().isoformat()
 
-st.title("🏗️DEMO CONSTRUCTIONn - Procurement & Inventory")
+st.title("🛠️📦DEMO CONSTRUCTIONn - Procurement & Inventory")
 
 st.sidebar.write(f"👤 **Logged in as:** {st.session_state.current_user}")
 st.sidebar.success("Status: Online")
@@ -9757,18 +9757,18 @@ if role == "Motorpool":
 
     # Standalone runner
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🏗️DEMO CONSTRUCTIONn - Procurement & Inventory")
+    #st.title("🛠️📦DEMO CONSTRUCTIONn - Procurement & Inventory")
     #db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     #render_full_application(db_conn)
     # Standalone runner
 #if __name__ == "__main__":
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🏗️DEMO CONSTRUCTIONn - Procurement & Inventory")
+    #st.title("🛠️📦DEMO CONSTRUCTIONn - Procurement & Inventory")
     #db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     #render_full_application(db_conn)
 
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🏗️DEMO CONSTRUCTION - Procurement & Inventory")
+    #st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
     
     db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     render_full_application(db_conn)
