@@ -4037,6 +4037,7 @@ def get_db_connection():
 '''
 #===New Connection 
 # --- DATABASE SETUP (Turso Embedded Replica with Auto-Recovery) ---
+# --- DATABASE SETUP (Turso Embedded Replica & Safe Local Fallback) ---
 import os
 import sqlite3
 import streamlit as st
@@ -4044,8 +4045,8 @@ import streamlit as st
 @st.cache_resource
 def get_db_connection():
     """
-    Connects to Turso via Embedded Replica with automatic cleanup 
-    for empty or corrupted local replica files.
+    Connects to Turso via Embedded Replica or safely falls back 
+    to a relative local inventory.db path across environments.
     """
     db_url = None
     auth_token = ""
@@ -4069,7 +4070,7 @@ def get_db_connection():
         try:
             import libsql_experimental as turso_sqlite
             
-            # Auto-purge if file is empty (0 bytes)
+            # Clean up empty/corrupted replica file
             if os.path.exists(replica_path) and os.path.getsize(replica_path) == 0:
                 os.remove(replica_path)
 
@@ -4082,7 +4083,6 @@ def get_db_connection():
                 conn.sync()
                 return conn
             except Exception as inner_e:
-                # If file is flagged as not a database, purge and retry once
                 if "file is not a database" in str(inner_e) and os.path.exists(replica_path):
                     os.remove(replica_path)
                     conn = turso_sqlite.connect(
@@ -4101,9 +4101,16 @@ def get_db_connection():
             st.error(f"Failed to connect to Turso embedded replica: {e}")
             st.stop()
 
-    # 3. Fallback to Local SQLite database
+    # 3. Safe Cross-Platform Fallback to Local SQLite database
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+    # Check if 'demo' subfolder exists or point directly to app directory
     local_db_path = os.path.join(BASE_DIR, "inventory.db")
+    if not os.path.exists(local_db_path):
+        # Check inside the demo folder if running locally from root
+        alt_path = os.path.join(BASE_DIR, "demo", "inventory.db")
+        if os.path.exists(alt_path):
+            local_db_path = alt_path
 
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Allows accessing columns by name
