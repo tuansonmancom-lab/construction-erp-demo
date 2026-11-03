@@ -4037,94 +4037,58 @@ def get_db_connection():
 '''
 #===New Connection 
 # --- DATABASE SETUP (Turso Embedded Replica with Auto-Recovery) ---
-# --- DATABASE SETUP (Turso Embedded Replica & Safe Local Fallback) ---
+# --- DATABASE SETUP (Turso Embedded Replica with Connection Status) ---
 import os
 import sqlite3
 import streamlit as st
 
 @st.cache_resource
 def get_db_connection():
-    """
-    Connects to Turso via Embedded Replica (omitting unsupported row_factory)
-    or falls back to local SQLite with safe error recovery.
-    """
     db_url = None
     auth_token = ""
 
-    # 1. Fetch credentials from Streamlit Secrets or Environment Variables
+    # 1. Fetch credentials from Streamlit Secrets
     try:
         if hasattr(st, "secrets") and "TURSO_DATABASE_URL" in st.secrets:
             db_url = st.secrets["TURSO_DATABASE_URL"]
             auth_token = st.secrets.get("TURSO_AUTH_TOKEN", "")
-        else:
-            db_url = os.getenv("TURSO_DATABASE_URL")
-            auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
     except Exception:
-        db_url = os.getenv("TURSO_DATABASE_URL")
-        auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
+        pass
 
     replica_path = "turso_sync.db"
 
-    # 2. If valid Turso remote URL exists, connect via libsql
+    # 2. Connect to Turso if URL exists
     if db_url and (str(db_url).startswith("libsql://") or str(db_url).startswith("https://") or str(db_url).startswith("wss://")):
         try:
             import libsql_experimental as turso_sqlite
             
-            # Clean up corrupted/mismatched sync state files if metadata exists without db file
+            # Clean up corrupted sync files if any exist
             for f in [replica_path, replica_path + "-meta", replica_path + "-wal", replica_path + "-shm"]:
-                if os.path.exists(f):
+                if os.path.exists(f) and os.path.getsize(f) == 0:
                     try:
                         os.remove(f)
                     except Exception:
                         pass
 
-            try:
-                conn = turso_sqlite.connect(
-                    replica_path,
-                    sync_url=db_url,
-                    auth_token=auth_token
-                )
-                conn.sync()
-                # Note: libsql_experimental does not support row_factory, so we omit it here
-                return conn
-            except Exception as inner_e:
-                # If sync state is incorrect, wipe all replica files and retry once
-                for f in [replica_path, replica_path + "-meta", replica_path + "-wal", replica_path + "-shm"]:
-                    if os.path.exists(f):
-                        try:
-                            os.remove(f)
-                        except Exception:
-                            pass
-                
-                conn = turso_sqlite.connect(
-                    replica_path,
-                    sync_url=db_url,
-                    auth_token=auth_token
-                )
-                conn.sync()
-                return conn
-
-        except ImportError:
-            st.error("Please install `libsql-experimental` to connect to Turso. Run: pip install libsql-experimental")
-            st.stop()
+            conn = turso_sqlite.connect(
+                replica_path,
+                sync_url=db_url,
+                auth_token=auth_token
+            )
+            conn.sync()
+            st.toast("Connected to Turso Cloud successfully!", icon="☁️")
+            return conn
         except Exception as e:
-            st.error(f"Failed to connect to Turso embedded replica: {e}")
+            st.error(f"Turso Connection Failed: {e}")
             st.stop()
 
-    # 3. Fallback to Local SQLite database
+    # 3. Local SQLite Fallback (Only runs if Turso secrets are missing)
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     local_db_path = os.path.join(BASE_DIR, "inventory.db")
 
-    if not os.path.exists(local_db_path) or os.path.getsize(local_db_path) == 0:
-        st.error(
-            "🚨 **Database Configuration Error**\n\n"
-            "Turso credentials were not detected or failed, and `inventory.db` was not found. "
-            "Please check your Streamlit secrets or local database file."
-        )
-        st.stop()
-
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row  # Standard sqlite3 supports row_factory
+    conn.row_factory = sqlite3.Row
+    st.toast("Running on Local SQLite database", icon="💾")
     return conn
 # ======================================================================================
 #                                    DATABASE
