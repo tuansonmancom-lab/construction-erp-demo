@@ -3983,7 +3983,7 @@ def get_db_connection():
         return sqlite3.connect(db_url, check_same_thread=False)
 
 
-
+'''
 # --- DATABASE SETUP (Turso / SQLite Integrated) ---
 import os
 import sqlite3
@@ -4029,56 +4029,7 @@ def get_db_connection():
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Allows accessing columns by name
     return conn
-    '''    
-# --- DATABASE SETUP (Direct Turso Cloud Connection) ---
-import os
-import sqlite3
-import streamlit as st
-
-@st.cache_resource
-def get_db_connection():
-    """
-    Connects directly to Turso cloud database if configured,
-    otherwise falls back to local inventory.db.
-    """
-    db_url = None
-    auth_token = ""
-
-    # 1. Attempt to fetch credentials from Streamlit Secrets or Environment Variables
-    try:
-        if hasattr(st, "secrets") and "TURSO_DATABASE_URL" in st.secrets:
-            db_url = st.secrets["TURSO_DATABASE_URL"]
-            auth_token = st.secrets.get("TURSO_AUTH_TOKEN", "")
-        else:
-            db_url = os.getenv("TURSO_DATABASE_URL")
-            auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
-    except Exception:
-        db_url = os.getenv("TURSO_DATABASE_URL")
-        auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
-
-    # 2. If valid Turso remote URL exists, connect directly via libsql
-    if db_url and (str(db_url).startswith("libsql://") or str(db_url).startswith("https://") or str(db_url).startswith("wss://")):
-        try:
-            import libsql_experimental as turso_sqlite
-            # Direct remote connection (no local replica files needed)
-            conn = turso_sqlite.connect(db_url, auth_token=auth_token)
-            return conn
-        except ImportError:
-            st.error("Please install `libsql-experimental` to connect to Turso. Run: pip install libsql-experimental")
-            st.stop()
-        except Exception as e:
-            st.error(f"Failed to connect to Turso database: {e}")
-            st.stop()
-
-    # 3. Fallback to Local SQLite database
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    local_db_path = os.path.join(BASE_DIR, "inventory.db")
-
-    conn = sqlite3.connect(local_db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row  # Allows accessing columns by name
-    return conn
-# ======================================================================================
-#                                    DATABASE
+        
 #======================================================================================
 #                                    DATABASE                                         =
 #======================================================================================
