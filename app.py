@@ -838,7 +838,7 @@ import requests
 import streamlit as st
 from datetime import datetime
 
-# 1.  Sites & GPS Mapping
+# 1. Project Sites & GPS Mapping
 SITE_COORDINATES = {
     "Main Office / Yard": (10.3157, 123.8854),
     "Site A - Commercial Bldg": (10.2447, 123.8488),
@@ -882,7 +882,7 @@ def render_manual_weather_entry(conn):
     # Site Selection & Optional Live Fetch
     col_site, col_btn = st.columns([3, 1])
     with col_site:
-        selected_site = st.selectbox("Select  Site", list(SITE_COORDINATES.keys()))
+        selected_site = st.selectbox("Select Project Site", list(SITE_COORDINATES.keys()))
     with col_btn:
         st.write("") # Spacing alignment
         if st.button("🌐 Pre-fill via Internet"):
@@ -2770,7 +2770,7 @@ def render_full_application(conn):
 # Standalone runner
 #if __name__ == "__main__":
 #    st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-#    st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
+#    st.title("🏗️DEMO CONSTRUCTION - Procurement & Inventory")
 #    db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
 #    render_full_application(db_conn)
 
@@ -3983,8 +3983,7 @@ def get_db_connection():
         return sqlite3.connect(db_url, check_same_thread=False)
 
 
-'''
-_old_databaseConnection = '''
+
 # --- DATABASE SETUP (Turso / SQLite Integrated) ---
 import os
 import sqlite3
@@ -4030,13 +4029,7 @@ def get_db_connection():
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Allows accessing columns by name
     return conn
-        
-#======================================================================================
-#                                    DATABASE                                         =
-#======================================================================================
-'''
-#===New Connection 
-# --- DATABASE SETUP (Turso Embedded Replica with Auto-Recovery) ---
+    '''    
 # --- DATABASE SETUP (Direct Turso Cloud Connection) ---
 import os
 import sqlite3
@@ -4084,6 +4077,11 @@ def get_db_connection():
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # Allows accessing columns by name
     return conn
+# ======================================================================================
+#                                    DATABASE
+#======================================================================================
+#                                    DATABASE                                         =
+#======================================================================================
 # ======================================================================================
 #                                    DATABASE
 # ======================================================================================
@@ -5872,13 +5870,12 @@ if not st.session_state.logged_in:
         
     st.stop()
 
-_oldmainApp = '''
 # --- MAIN APP (IF LOGGED IN) ---
 # Keep activity timestamp updated on every user interaction
 st.query_params["user"] = st.session_state.current_user
 st.query_params["last_active"] = datetime.now().isoformat()
 
-st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
+st.title("🛠️📦️DEMO CONSTRUCTIONn - Procurement & Inventory")
 
 st.sidebar.write(f"👤 **Logged in as:** {st.session_state.current_user}")
 st.sidebar.success("Status: Online")
@@ -5896,48 +5893,6 @@ if not st.session_state.available_roles:
     st.stop()
 
 st.write("Welcome back! Your session is active.")
-'''
-#=========new Main App =======
-# --- MAIN APP (IF LOGGED IN) ---
-# Keep activity timestamp updated on every user interaction
-st.query_params["user"] = st.session_state.current_user
-st.query_params["last_active"] = datetime.now().isoformat()
-
-st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
-
-st.sidebar.write(f"👤 **Logged in as:** {st.session_state.current_user}")
-st.sidebar.success("Status: Online")
-
-# Logout button: Clears session and URL query parameters
-if st.sidebar.button("🚪 Logout", width="stretch"):
-    st.query_params.clear()
-    st.session_state.clear()
-    st.rerun()
-
-st.sidebar.markdown("---")
-
-# --- MANUAL TURSO CLOUD SYNC BUTTON ---
-if st.sidebar.button("🔄 Sync Cloud Database", width="stretch"):
-    try:
-        # Check if active connection is a Turso/libsql instance supporting sync
-        if hasattr(conn, "sync"):
-            conn.sync()
-            st.cache_data.clear()
-            st.success("Synced successfully with Turso cloud!")
-            st.rerun()
-        else:
-            st.info("Running on local SQLite. Cloud sync is only active for remote Turso connections.")
-    except Exception as e:
-        st.error(f"Sync failed: {e}")
-
-st.sidebar.markdown("---")
-
-if not st.session_state.available_roles:
-    st.warning("You have no roles assigned. Please contact the Admin.")
-    st.stop()
-
-st.write("Welcome back! Your session is active.")
-#==============================end Login System=====================
 #==============================end Login System=====================
 
 role = st.sidebar.selectbox("🔑 Select Your Active Role", st.session_state.available_roles)
@@ -9851,18 +9806,18 @@ if role == "Motorpool":
 
     # Standalone runner
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
+    #st.title("🏗️DEMO CONSTRUCTIONn - Procurement & Inventory")
     #db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     #render_full_application(db_conn)
     # Standalone runner
 #if __name__ == "__main__":
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
+    #st.title("🏗️DEMO CONSTRUCTIONn - Procurement & Inventory")
     #db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     #render_full_application(db_conn)
 
     #st.set_page_config(page_title="DEMO CONSTRUCTION - Procurement & Motorpool", layout="wide")
-    #st.title("🛠️📦DEMO CONSTRUCTION - Procurement & Inventory")
+    #st.title("🏗️DEMO CONSTRUCTION - Procurement & Inventory")
     
     db_conn = sqlite3.connect("enterprise_erp.db", check_same_thread=False)
     render_full_application(db_conn)
