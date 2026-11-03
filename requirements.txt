@@ -3,3 +3,4 @@ pandas
 libsql-experimental
 reportlab
 streamlit-autorefresh
+requests
