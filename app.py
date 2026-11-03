@@ -4036,7 +4036,7 @@ def get_db_connection():
 #======================================================================================
 '''
 #===New Connection 
-# --- DATABASE SETUP (Turso Embedded Replica & SQLite Integrated) ---
+# --- DATABASE SETUP (Turso Embedded Replica with Auto-Recovery) ---
 import os
 import sqlite3
 import streamlit as st
@@ -4044,13 +4044,13 @@ import streamlit as st
 @st.cache_resource
 def get_db_connection():
     """
-    Dynamically connects to Turso via an Embedded Replica for microsecond read speeds,
-    or falls back automatically to local inventory.db.
+    Connects to Turso via Embedded Replica with automatic cleanup 
+    for empty or corrupted local replica files.
     """
     db_url = None
     auth_token = ""
 
-    # 1. Attempt to fetch credentials from Streamlit Secrets or Environment Variables
+    # 1. Fetch credentials from Streamlit Secrets or Environment Variables
     try:
         if "TURSO_DATABASE_URL" in st.secrets:
             db_url = st.secrets["TURSO_DATABASE_URL"]
@@ -4062,20 +4062,38 @@ def get_db_connection():
         db_url = os.getenv("TURSO_DATABASE_URL")
         auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
 
-    # 2. If valid Turso remote URL exists, connect via libsql using an Embedded Replica
+    replica_path = "local_replica.db"
+
+    # 2. If valid Turso remote URL exists, connect via libsql
     if db_url and (str(db_url).startswith("libsql://") or str(db_url).startswith("https://") or str(db_url).startswith("wss://")):
         try:
             import libsql_experimental as turso_sqlite
             
-            # Connects to a local replica file and syncs with your remote Turso URL
-            conn = turso_sqlite.connect(
-                database="local_replica.db",
-                sync_url=db_url,
-                auth_token=auth_token
-            )
-            # Pull latest changes from the cloud on startup
-            conn.sync()
-            return conn
+            # Auto-purge if file is empty (0 bytes)
+            if os.path.exists(replica_path) and os.path.getsize(replica_path) == 0:
+                os.remove(replica_path)
+
+            try:
+                conn = turso_sqlite.connect(
+                    replica_path,
+                    sync_url=db_url,
+                    auth_token=auth_token
+                )
+                conn.sync()
+                return conn
+            except Exception as inner_e:
+                # If file is flagged as not a database, purge and retry once
+                if "file is not a database" in str(inner_e) and os.path.exists(replica_path):
+                    os.remove(replica_path)
+                    conn = turso_sqlite.connect(
+                        replica_path,
+                        sync_url=db_url,
+                        auth_token=auth_token
+                    )
+                    conn.sync()
+                    return conn
+                raise inner_e
+
         except ImportError:
             st.error("Please install `libsql-experimental` to connect to Turso. Run: pip install libsql-experimental")
             st.stop()
@@ -4083,7 +4101,7 @@ def get_db_connection():
             st.error(f"Failed to connect to Turso embedded replica: {e}")
             st.stop()
 
-    # 3. Fallback to Local SQLite database (Plug-and-play for local drive)
+    # 3. Fallback to Local SQLite database
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     local_db_path = os.path.join(BASE_DIR, "inventory.db")
 
