@@ -838,7 +838,7 @@ import requests
 import streamlit as st
 from datetime import datetime
 
-# 1. Project Sites & GPS Mapping
+# 1.  Sites & GPS Mapping
 SITE_COORDINATES = {
     "Main Office / Yard": (10.3157, 123.8854),
     "Site A - Commercial Bldg": (10.2447, 123.8488),
@@ -882,7 +882,7 @@ def render_manual_weather_entry(conn):
     # Site Selection & Optional Live Fetch
     col_site, col_btn = st.columns([3, 1])
     with col_site:
-        selected_site = st.selectbox("Select Project Site", list(SITE_COORDINATES.keys()))
+        selected_site = st.selectbox("Select  Site", list(SITE_COORDINATES.keys()))
     with col_btn:
         st.write("") # Spacing alignment
         if st.button("🌐 Pre-fill via Internet"):
@@ -4187,488 +4187,336 @@ def init_banks_database(conn):
 
 
 def init_db():
-  conn = get_db_connection()
-  c = conn.cursor()
+    conn = get_db_connection()
+    c = conn.cursor()
 
-  # --- Safe Migration for Advance PDC Column in Suppliers Table ---
-  try:
-    c.execute(
-        "ALTER TABLE suppliers ADD COLUMN requires_advance_pdc TEXT DEFAULT"
-        " 'No'"
-    )
+    try:
+        c.execute("PRAGMA journal_mode = WAL;")
+        c.execute("PRAGMA synchronous = NORMAL;")
+        c.execute("PRAGMA busy_timeout = 5000;")
+    except Exception:
+        pass  # Turso/libsql safely ignores some PRAGMA statements
+
+    # --- 1. CREATE ALL TABLES FIRST ---
+
+    # 1. Projects Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_name TEXT UNIQUE
+                  )""")
+
+    # 2. Activities Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS activities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER,
+                    activity_name TEXT,
+                    qty REAL DEFAULT 1.0,
+                    unit TEXT DEFAULT 'lot',
+                    contract_amount REAL DEFAULT 0.0,
+                    FOREIGN KEY(project_id) REFERENCES projects(id))""")
+
+    # 3. Materials Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS materials (
+                    item_no TEXT PRIMARY KEY,
+                    description TEXT,
+                    unit TEXT,
+                    category TEXT DEFAULT 'Direct Materials')""")
+
+    # 4. Suppliers Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS suppliers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    supplier_name TEXT UNIQUE,
+                    location TEXT,
+                    contact_person TEXT,
+                    contact_number TEXT,
+                    tin_number TEXT,
+                    vat_type TEXT,
+                    terms_days INTEGER DEFAULT 0,
+                    requires_advance_pdc TEXT DEFAULT 'No')""")
+
+    # 5. Transaction Requests Table
+    c.execute("""CREATE TABLE IF NOT EXISTS requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp DATETIME,
+                    project_name TEXT,
+                    activity TEXT,
+                    item_no TEXT,
+                    description TEXT,
+                    category TEXT DEFAULT 'Direct Materials',
+                    qty REAL,
+                    unit TEXT,
+                    price REAL,
+                    amount REAL,
+                    email_address TEXT,
+                    status TEXT,
+                    supplier TEXT,
+                    pono TEXT,
+                    approved_by TEXT,
+                    approved_timestamp DATETIME,
+                    payment_status TEXT DEFAULT 'Unpaid',
+                    received_status TEXT DEFAULT 'Pending',
+                    received_timestamp DATETIME,
+                    requester_name TEXT)""")
+
+    # 6. Deliveries / Receiving Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS deliveries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pono TEXT,
+                    supplier TEXT,
+                    project_name TEXT,
+                    dr_number TEXT,
+                    total_amount REAL,
+                    received_date DATETIME,
+                    payment_status TEXT DEFAULT 'Unpaid',
+                    receipt_image BLOB,
+                    file_name TEXT,
+                    apv_number TEXT,
+                    apv_date DATETIME,
+                    cv_number TEXT,
+                    cv_date DATETIME,
+                    payment_method TEXT)""")
+
+    # 7. Signatories Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS signatories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
+                    role TEXT,
+                    signature_path TEXT)""")
+
+    # 8. Users Master Table
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    password TEXT,
+                    role1 TEXT,
+                    role2 TEXT,
+                    role3 TEXT,
+                    role4 TEXT,
+                    role5 TEXT,
+                    role6 TEXT,
+                    status TEXT DEFAULT 'Active',
+                    can_add_act TEXT DEFAULT 'No',
+                    can_add_item TEXT DEFAULT 'No')""")
+
+    # 9. General Ledger / Journal Entries Table
+    c.execute("""CREATE TABLE IF NOT EXISTS journal_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entry_date DATETIME,
+                    voucher_no TEXT,
+                    account_code TEXT,
+                    account_name TEXT,
+                    debit REAL DEFAULT 0.0,
+                    credit REAL DEFAULT 0.0,
+                    ref_no TEXT,
+                    description TEXT,
+                    supplier TEXT)""")
+
+    # 10. Chart of Accounts Table
+    c.execute("""CREATE TABLE IF NOT EXISTS chart_of_accounts (
+                    account_code TEXT PRIMARY KEY,
+                    account_name TEXT NOT NULL,
+                    account_type TEXT NOT NULL,
+                    status TEXT DEFAULT 'Active')""")
+
+    # 11. Inventory Ledger Table
+    c.execute("""CREATE TABLE IF NOT EXISTS inventory_ledger (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    ref_no TEXT NOT NULL,
+                    item_description TEXT NOT NULL,
+                    qty_in REAL DEFAULT 0.0,
+                    qty_out REAL DEFAULT 0.0,
+                    balance REAL DEFAULT 0.0,
+                    location TEXT,
+                    remarks TEXT,
+                    supplier TEXT,
+                    status TEXT DEFAULT 'Completed')""")
+
+    # --- HRIS / PAYROLL TABLES ---
+    c.execute("""CREATE TABLE IF NOT EXISTS workers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    worker_name TEXT UNIQUE NOT NULL,
+                    worker_type TEXT,
+                    daily_rate REAL NOT NULL,
+                    sss_no TEXT,
+                    philhealth_no TEXT,
+                    pagibig_no TEXT,
+                    status TEXT DEFAULT 'Active')""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS timekeeping (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    worker_id INTEGER,
+                    project_name TEXT,
+                    activity_name TEXT,
+                    work_date TEXT,
+                    days_worked REAL DEFAULT 1.0,
+                    ot_hours REAL DEFAULT 0.0,
+                    vale_amount REAL DEFAULT 0.0,
+                    FOREIGN KEY(worker_id) REFERENCES workers(id))""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS payroll_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    payroll_period TEXT,
+                    total_gross REAL,
+                    total_deductions REAL,
+                    total_net REAL,
+                    status TEXT DEFAULT 'Pending Approval')""")
+
+    # 12. Weather Logs Table
+    c.execute("""CREATE TABLE IF NOT EXISTS daily_weather_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    log_date TEXT NOT NULL,
+                    day_of_week TEXT NOT NULL,
+                    log_time TEXT NOT NULL,
+                    project_site TEXT NOT NULL,
+                    weather_condition TEXT NOT NULL,
+                    temp_celsius REAL,
+                    impact_level TEXT NOT NULL,
+                    work_disruption_hrs REAL DEFAULT 0.0,
+                    remarks TEXT,
+                    logged_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+
     conn.commit()
-  except Exception:
-    # Column already exists
-    pass
 
-  try:
-    c.execute("PRAGMA journal_mode = WAL;")
-    c.execute("PRAGMA synchronous = NORMAL;")
-    c.execute("PRAGMA busy_timeout = 5000;")
-  except Exception:
-    pass  # Turso/libsql may safely ignore some PRAGMA statements
+    # --- 2. MIGRATIONS FOR EXISTING DATABASES ---
+    for col in ["location", "contact_person", "contact_number", "tin_number", "vat_type", "requires_advance_pdc"]:
+        try:
+            c.execute(f"ALTER TABLE suppliers ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
 
-  # 1. Projects Master Table
-  c.execute("""CREATE TABLE IF NOT EXISTS projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_name TEXT UNIQUE
-              )""")
+    for col_sql in [
+        ("materials", "category", "TEXT DEFAULT 'Direct Materials'"),
+        ("requests", "category", "TEXT DEFAULT 'Direct Materials'"),
+        ("requests", "supplier", "TEXT"),
+        ("suppliers", "terms_days", "INTEGER DEFAULT 0"),
+        ("requests", "payment_status", "TEXT DEFAULT 'Unpaid'"),
+        ("requests", "received_status", "TEXT DEFAULT 'Pending'"),
+        ("requests", "received_timestamp", "DATETIME"),
+        ("requests", "requester_name", "TEXT"),
+        ("activities", "contract_amount", "REAL DEFAULT 0.0"),
+        ("activities", "qty", "REAL DEFAULT 1.0"),
+        ("activities", "unit", "TEXT DEFAULT 'lot'"),
+        ("deliveries", "supplier", "TEXT"),
+        ("deliveries", "receipt_image", "BLOB"),
+        ("deliveries", "file_name", "TEXT"),
+        ("deliveries", "apv_number", "TEXT"),
+        ("deliveries", "apv_date", "DATETIME"),
+        ("deliveries", "cv_number", "TEXT"),
+        ("deliveries", "cv_date", "DATETIME"),
+        ("deliveries", "payment_method", "TEXT"),
+        ("users", "can_add_act", "TEXT DEFAULT 'No'"),
+        ("users", "can_add_item", "TEXT DEFAULT 'No'"),
+        ("users", "role6", "TEXT DEFAULT ''"),
+        ("inventory_ledger", "supplier", "TEXT"),
+        ("inventory_ledger", "status", "TEXT DEFAULT 'Completed'"),
+        ("journal_entries", "supplier", "TEXT"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE {col_sql[0]} ADD COLUMN {col_sql[1]} {col_sql[2]}")
+        except Exception:
+            pass
 
-  # 2. Activities Master Table
-  c.execute("""CREATE TABLE IF NOT EXISTS activities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER,
-                activity_name TEXT,
-                qty REAL DEFAULT 1.0,
-                unit TEXT DEFAULT 'lot',
-                contract_amount REAL DEFAULT 0.0,
-                FOREIGN KEY(project_id) REFERENCES projects(id))""")
+    conn.commit()
 
-  # 3. Materials Master Table
-  c.execute("""CREATE TABLE IF NOT EXISTS materials (
-                item_no TEXT PRIMARY KEY,
-                description TEXT,
-                unit TEXT,
-                category TEXT DEFAULT 'Direct Materials')""")
-
-  # 4. Suppliers Master Table
-  c.execute("""CREATE TABLE IF NOT EXISTS suppliers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                supplier_name TEXT UNIQUE,
-                location TEXT,
-                contact_person TEXT,
-                contact_number TEXT,
-                tin_number TEXT,
-                vat_type TEXT,
-                terms_days INTEGER DEFAULT 0)""")
-
-  # 5. Transaction Requests Table
-  c.execute("""CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME,
-                project_name TEXT,
-                activity TEXT,
-                item_no TEXT,
-                description TEXT,
-                category TEXT DEFAULT 'Direct Materials',
-                qty REAL,
-                unit TEXT,
-                price REAL,
-                amount REAL,
-                email_address TEXT,
-                status TEXT,
-                supplier TEXT,
-                pono TEXT,
-                approved_by TEXT,
-                approved_timestamp DATETIME,
-                payment_status TEXT DEFAULT 'Unpaid',
-                received_status TEXT DEFAULT 'Pending',
-                received_timestamp DATETIME,
-                requester_name TEXT)""")
-
-  # 6. Deliveries / Receiving Master Table
-  c.execute("""CREATE TABLE IF NOT EXISTS deliveries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pono TEXT,
-                supplier TEXT,
-                project_name TEXT,
-                dr_number TEXT,
-                total_amount REAL,
-                received_date DATETIME,
-                payment_status TEXT DEFAULT 'Unpaid',
-                receipt_image BLOB,
-                file_name TEXT,
-                apv_number TEXT,
-                apv_date DATETIME,
-                cv_number TEXT,
-                cv_date DATETIME,
-                payment_method TEXT)""")
-
-  # 7. Signatories Master Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS signatories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            role TEXT,
-            signature_path TEXT
+    # --- 3. SEED INITIAL DATA ---
+    c.execute("SELECT COUNT(*) FROM projects")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            "INSERT INTO projects (project_name) VALUES (?)",
+            [("Punta",), ("Suba",), ("Basak",), ("Dumanjug",), ("MOTORPOOL",)],
         )
-    """)
 
-  # 8. Users Master Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT,
-            role1 TEXT,
-            role2 TEXT,
-            role3 TEXT,
-            role4 TEXT,
-            role5 TEXT,
-            role6 TEXT,
-            status TEXT DEFAULT 'Active',
-            can_add_act TEXT DEFAULT 'No',
-            can_add_item TEXT DEFAULT 'No'
+        c.executemany(
+            "INSERT INTO activities (project_id, activity_name, qty, unit, contract_amount) VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, "painting", 1.0, "lot", 0.0),
+                (2, "FORM WORKS", 1.0, "lot", 0.0),
+                (3, "LINTEL BEAM", 1.0, "lot", 0.0),
+                (3, "CHB LAYING", 1.0, "lot", 0.0),
+                (3, "COLUMN CORRECTION", 1.0, "lot", 0.0),
+                (4, "PCCP", 1.0, "lot", 0.0),
+                (5, "RENEWAL REGISTRATION", 1.0, "lot", 0.0),
+            ],
         )
-    """)
 
-  # 9. General Ledger / Journal Entries Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS journal_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            entry_date DATETIME,
-            voucher_no TEXT,
-            account_code TEXT,
-            account_name TEXT,
-            debit REAL DEFAULT 0.0,
-            credit REAL DEFAULT 0.0,
-            ref_no TEXT,
-            description TEXT,
-            supplier TEXT
+        c.executemany(
+            "INSERT INTO materials (item_no, description, unit, category) VALUES (?, ?, ?, ?)",
+            [
+                ("00001", "PORTLAND CEMENT", "BAGS", "Direct Materials"),
+                ("00002", "DEF. BARS 12MM X 9M", "LENGTH", "Direct Materials"),
+                ("00003", "DEF. BARS 10MM X 6M", "LENGTH", "Direct Materials"),
+                ("00004", "STEEL MATTING", "SHEET", "Direct Materials"),
+                ("00005", "MCAB - JAR - 8507", "LOT", "Equipment & Rental"),
+                ("00006", "SELFLOADER - MEJ - 598", "LOT", "Equipment & Rental"),
+            ],
         )
-    """)
 
-  # 10. Chart of Accounts Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS chart_of_accounts (
-            account_code TEXT PRIMARY KEY,
-            account_name TEXT NOT NULL,
-            account_type TEXT NOT NULL,
-            status TEXT DEFAULT 'Active'
+        c.executemany(
+            """INSERT INTO suppliers 
+                (supplier_name, location, contact_person, contact_number, tin_number, vat_type, terms_days) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [
+                ("NOEL A. FARIOLEN", "Cebu City", "Noel Fariolen", "0917-000-0001", "000-000-000-000", "VAT Registered", 0),
+                ("CENTRAL LUMBER CORP.", "Mandaue City", "Sales Department", "0917-000-0002", "123-456-789-000", "VAT Registered", 30),
+                ("FILMON HARDWARE, INC.", "Cebu City", "Customer Desk", "0917-000-0003", "987-654-321-000", "VAT Registered", 15),
+                ("DANILO LUMBER SUPPLY", "Consolacion", "Danilo", "0917-000-0004", "111-222-333-000", "Non-VAT", 0),
+                ("CEBU DIAMOND INDUSTRIAL", "Mandaue City", "Operations", "0917-000-0005", "444-555-666-000", "VAT Registered", 30),
+                ("GDSM MARKETING", "Lapu-Lapu City", "Manager", "0917-000-0006", "777-888-999-000", "Non-VAT", 0),
+            ],
         )
-    """)
 
-  # 11. Inventory Ledger Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS inventory_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            ref_no TEXT NOT NULL,
-            item_description TEXT NOT NULL,
-            qty_in REAL DEFAULT 0.0,
-            qty_out REAL DEFAULT 0.0,
-            balance REAL DEFAULT 0.0,
-            location TEXT,
-            remarks TEXT,
-            supplier TEXT,
-            status TEXT DEFAULT 'Completed'
+    c.execute("SELECT COUNT(*) FROM signatories")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            "INSERT INTO signatories (name, role, signature_path) VALUES (?, ?, ?)",
+            [
+                ("BRAZEL M. DELA CERNA", "Preparer", ""),
+                ("LEIZEL A. CABUNILAS", "Approver", "Leizel_signature.png"),
+            ],
         )
-    """)
 
-  # --- HRIS / PAYROLL TABLES INITIALIZATION ---
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS workers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            worker_name TEXT UNIQUE NOT NULL,
-            worker_type TEXT,
-            daily_rate REAL NOT NULL,
-            sss_no TEXT,
-            philhealth_no TEXT,
-            pagibig_no TEXT,
-            status TEXT DEFAULT 'Active'
+    c.execute("SELECT COUNT(*) FROM users")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            """INSERT INTO users 
+                (username, password, role1, role2, role3, role4, role5, role6, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                ("Vergel", "1234", "Purchaser", "", "", "", "", "", "Active"),
+                ("Glance", "5641", "Requisitor", "Purchaser", "", "Office Manager", "Admin View All", "", "Active"),
+                ("Brazel", "12181", "Requisitor", "Purchaser", "Approver", "Office Manager", "Admin View All", "Accounting", "Active"),
+                ("Leizel", "5874", "", "", "Approver", "Office Manager", "", "", "Active"),
+                ("AccountingUser", "1234", "Accounting", "", "", "", "", "", "Active"),
+                ("Admin", "admin", "Admin View All", "", "", "", "", "", "Active"),
+            ],
         )
-    """)
 
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS timekeeping (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            worker_id INTEGER,
-            project_name TEXT,
-            activity_name TEXT,
-            work_date TEXT,
-            days_worked REAL DEFAULT 1.0,
-            ot_hours REAL DEFAULT 0.0,
-            vale_amount REAL DEFAULT 0.0,
-            FOREIGN KEY(worker_id) REFERENCES workers(id)
+    c.execute("SELECT COUNT(*) FROM chart_of_accounts")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            "INSERT INTO chart_of_accounts (account_code, account_name, account_type) VALUES (?, ?, ?)",
+            [
+                ("10100", "Cash on Hand", "Asset"),
+                ("10310", "Cash in Bank MBTC", "Asset"),
+                ("10320", "Cash in Bank CHINA", "Asset"),
+                ("10330", "Cash in Bank BDO", "Asset"),
+                ("10340", "Cash in Bank Landbank", "Asset"),
+                ("13100", "Construction Materials", "Asset"),
+                ("20100", "Accounts Payable-Trade", "Liability"),
+                ("60200", "Direct Cost Materials", "Expense"),
+            ],
         )
-    """)
 
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS payroll_runs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            payroll_period TEXT,
-            total_gross REAL,
-            total_deductions REAL,
-            total_net REAL,
-            status TEXT DEFAULT 'Pending Approval'
-        )
-    """)
-  # ========================end of HRIS===================
+    conn.commit()
 
-  # --- AUTO-MIGRATIONS FOR EXISTING DATABASES ---
-  for col in [
-      "location",
-      "contact_person",
-      "contact_number",
-      "tin_number",
-      "vat_type",
-  ]:
-    try:
-      c.execute(f"ALTER TABLE suppliers ADD COLUMN {col} TEXT")
-    except Exception:
-      pass
-
-  for col_sql in [
-      ("materials", "category", "TEXT DEFAULT 'Direct Materials'"),
-      ("requests", "category", "TEXT DEFAULT 'Direct Materials'"),
-      ("requests", "supplier", "TEXT"),
-      ("suppliers", "terms_days", "INTEGER DEFAULT 0"),
-      ("requests", "payment_status", "TEXT DEFAULT 'Unpaid'"),
-      ("requests", "received_status", "TEXT DEFAULT 'Pending'"),
-      ("requests", "received_timestamp", "DATETIME"),
-      ("requests", "requester_name", "TEXT"),
-      ("activities", "contract_amount", "REAL DEFAULT 0.0"),
-      ("activities", "qty", "REAL DEFAULT 1.0"),
-      ("activities", "unit", "TEXT DEFAULT 'lot'"),
-      ("deliveries", "supplier", "TEXT"),
-      ("deliveries", "receipt_image", "BLOB"),
-      ("deliveries", "file_name", "TEXT"),
-      ("deliveries", "apv_number", "TEXT"),
-      ("deliveries", "apv_date", "DATETIME"),
-      ("deliveries", "cv_number", "TEXT"),
-      ("deliveries", "cv_date", "DATETIME"),
-      ("deliveries", "payment_method", "TEXT"),
-      ("users", "can_add_act", "TEXT DEFAULT 'No'"),
-      ("users", "can_add_item", "TEXT DEFAULT 'No'"),
-      ("users", "role6", "TEXT DEFAULT ''"),
-      ("inventory_ledger", "supplier", "TEXT"),
-      ("inventory_ledger", "status", "TEXT DEFAULT 'Completed'"),
-      ("journal_entries", "supplier", "TEXT"),
-  ]:
-    try:
-      c.execute(
-          f"ALTER TABLE {col_sql[0]} ADD COLUMN {col_sql[1]} {col_sql[2]}"
-      )
-    except Exception:
-      pass
-
-  # --- SEED INITIAL DATA ---
-  c.execute("SELECT COUNT(*) FROM projects")
-  if c.fetchone()[0] == 0:
-    c.executemany(
-        "INSERT INTO projects (project_name) VALUES (?)",
-        [("Punta",), ("Suba",), ("Basak",), ("Dumanjug",), ("MOTORPOOL",)],
-    )
-
-    c.executemany(
-        "INSERT INTO activities (project_id, activity_name, qty, unit,"
-        " contract_amount) VALUES (?, ?, ?, ?, ?)",
-        [
-            (1, "painting", 1.0, "lot", 0.0),
-            (2, "FORM WORKS", 1.0, "lot", 0.0),
-            (3, "LINTEL BEAM", 1.0, "lot", 0.0),
-            (3, "CHB LAYING", 1.0, "lot", 0.0),
-            (3, "COLUMN CORRECTION", 1.0, "lot", 0.0),
-            (4, "PCCP", 1.0, "lot", 0.0),
-            (5, "RENEWAL REGISTRATION", 1.0, "lot", 0.0),
-        ],
-    )
-
-    c.executemany(
-        "INSERT INTO materials (item_no, description, unit, category) VALUES"
-        " (?, ?, ?, ?)",
-        [
-            ("00001", "PORTLAND CEMENT", "BAGS", "Direct Materials"),
-            ("00002", "DEF. BARS 12MM X 9M", "LENGTH", "Direct Materials"),
-            ("00003", "DEF. BARS 10MM X 6M", "LENGTH", "Direct Materials"),
-            ("00004", "STEEL MATTING", "SHEET", "Direct Materials"),
-            ("00005", "MCAB - JAR - 8507", "LOT", "Equipment & Rental"),
-            ("00006", "SELFLOADER - MEJ - 598", "LOT", "Equipment & Rental"),
-        ],
-    )
-
-    c.executemany(
-        """INSERT INTO suppliers 
-            (supplier_name, location, contact_person, contact_number, tin_number, vat_type, terms_days) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        [
-            (
-                "NOEL A. FARIOLEN",
-                "Cebu City",
-                "Noel Fariolen",
-                "0917-000-0001",
-                "000-000-000-000",
-                "VAT Registered",
-                0,
-            ),
-            (
-                "CENTRAL LUMBER CORP.",
-                "Mandaue City",
-                "Sales Department",
-                "0917-000-0002",
-                "123-456-789-000",
-                "VAT Registered",
-                30,
-            ),
-            (
-                "FILMON HARDWARE, INC.",
-                "Cebu City",
-                "Customer Desk",
-                "0917-000-0003",
-                "987-654-321-000",
-                "VAT Registered",
-                15,
-            ),
-            (
-                "DANILO LUMBER SUPPLY",
-                "Consolacion",
-                "Danilo",
-                "0917-000-0004",
-                "111-222-333-000",
-                "Non-VAT",
-                0,
-            ),
-            (
-                "CEBU DIAMOND INDUSTRIAL",
-                "Mandaue City",
-                "Operations",
-                "0917-000-0005",
-                "444-555-666-000",
-                "VAT Registered",
-                30,
-            ),
-            (
-                "GDSM MARKETING",
-                "Lapu-Lapu City",
-                "Manager",
-                "0917-000-0006",
-                "777-888-999-000",
-                "Non-VAT",
-                0,
-            ),
-        ],
-    )
-
-  c.execute("SELECT COUNT(*) FROM signatories")
-  if c.fetchone()[0] == 0:
-    c.executemany(
-        "INSERT INTO signatories (name, role, signature_path) VALUES (?, ?, ?)",
-        [
-            ("BRAZEL M. DELA CERNA", "Preparer", ""),
-            ("LEIZEL A. CABUNILAS", "Approver", "Leizel_signature.png"),
-        ],
-    )
-
-  c.execute("SELECT COUNT(*) FROM users")
-  if c.fetchone()[0] == 0:
-    c.executemany(
-        """INSERT INTO users 
-            (username, password, role1, role2, role3, role4, role5, role6, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        [
-            (
-                "Vergel",
-                "1234",
-                "Purchaser",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "Active",
-            ),
-            (
-                "Glance",
-                "5641",
-                "Requisitor",
-                "Purchaser",
-                "",
-                "Office Manager",
-                "Admin View All",
-                "",
-                "Active",
-            ),
-            (
-                "Brazel",
-                "12181",
-                "Requisitor",
-                "Purchaser",
-                "Approver",
-                "Office Manager",
-                "Admin View All",
-                "Accounting",
-                "Active",
-            ),
-            (
-                "Leizel",
-                "5874",
-                "",
-                "",
-                "Approver",
-                "Office Manager",
-                "",
-                "",
-                "Active",
-            ),
-            (
-                "AccountingUser",
-                "1234",
-                "Accounting",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "Active",
-            ),
-            (
-                "Admin",
-                "admin",
-                "Admin View All",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "Active",
-            ),
-        ],
-    )
-
-  c.execute("SELECT COUNT(*) FROM chart_of_accounts")
-  if c.fetchone()[0] == 0:
-    c.executemany(
-        "INSERT INTO chart_of_accounts (account_code, account_name,"
-        " account_type) VALUES (?, ?, ?)",
-        [
-            ("10100", "Cash on Hand", "Asset"),
-            ("10310", "Cash in Bank MBTC", "Asset"),
-            ("10320", "Cash in Bank CHINA", "Asset"),
-            ("10330", "Cash in Bank BDO", "Asset"),
-            ("10340", "Cash in Bank Landbank", "Asset"),
-            ("13100", "Construction Materials", "Asset"),
-            ("20100", "Accounts Payable-Trade", "Liability"),
-            ("60200", "Direct Cost Materials", "Expense"),
-        ],
-    )
-
-  # Weather Logs Table
-  c.execute("""
-        CREATE TABLE IF NOT EXISTS daily_weather_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            log_date TEXT NOT NULL,
-            day_of_week TEXT NOT NULL,
-            log_time TEXT NOT NULL,
-            project_site TEXT NOT NULL,
-            weather_condition TEXT NOT NULL,
-            temp_celsius REAL,
-            impact_level TEXT NOT NULL,
-            work_disruption_hrs REAL DEFAULT 0.0,
-            remarks TEXT,
-            logged_by TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-  conn.commit()
-
-  # --- CALL MODULE INITIALIZERS ---
-  sync_table_columns(conn)
-  init_motorpool_db(conn)
-  init_office_payroll_tables(conn)
-  init_banks_database(conn)  # <--- Initializes banks_master, loans_master & loan_amortization_schedule
-  init_loans_database(conn) 
-
+    # --- 4. MODULE INITIALIZERS ---
+    sync_table_columns(conn)
+    init_motorpool_db(conn)
+    init_office_payroll_tables(conn)
+    init_banks_database(conn)
+    init_loans_database(conn)
 
 init_db()
 #===============================database
