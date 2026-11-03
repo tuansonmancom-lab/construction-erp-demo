@@ -4037,7 +4037,7 @@ def get_db_connection():
 '''
 #===New Connection 
 # --- DATABASE SETUP (Turso Embedded Replica with Auto-Recovery) ---
-# --- DATABASE SETUP (Turso Embedded Replica with Auto-Purge & Fresh File) ---
+# --- DATABASE SETUP (Turso Embedded Replica & Safe Local Fallback) ---
 import os
 import sqlite3
 import streamlit as st
@@ -4045,8 +4045,8 @@ import streamlit as st
 @st.cache_resource
 def get_db_connection():
     """
-    Connects to Turso via Embedded Replica using a dedicated sync file 
-    and handles automatic re-initialization if any old files conflict.
+    Connects to Turso via Embedded Replica (omitting unsupported row_factory)
+    or falls back to local SQLite with safe error recovery.
     """
     db_url = None
     auth_token = ""
@@ -4063,7 +4063,6 @@ def get_db_connection():
         db_url = os.getenv("TURSO_DATABASE_URL")
         auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
 
-    # Use a fresh, dedicated filename for the Turso replica to avoid old file conflicts
     replica_path = "turso_sync.db"
 
     # 2. If valid Turso remote URL exists, connect via libsql
@@ -4071,11 +4070,11 @@ def get_db_connection():
         try:
             import libsql_experimental as turso_sqlite
             
-            # Clean up old conflicting or empty replica files
-            for old_file in ["local_replica.db", replica_path]:
-                if os.path.exists(old_file) and (os.path.getsize(old_file) == 0 or "file is not a database" in str(db_url)):
+            # Clean up corrupted/mismatched sync state files if metadata exists without db file
+            for f in [replica_path, replica_path + "-meta", replica_path + "-wal", replica_path + "-shm"]:
+                if os.path.exists(f):
                     try:
-                        os.remove(old_file)
+                        os.remove(f)
                     except Exception:
                         pass
 
@@ -4086,12 +4085,16 @@ def get_db_connection():
                     auth_token=auth_token
                 )
                 conn.sync()
-                conn.row_factory = sqlite3.Row
+                # Note: libsql_experimental does not support row_factory, so we omit it here
                 return conn
             except Exception as inner_e:
-                # If there's any file error, wipe the replica file and recreate it once
-                if os.path.exists(replica_path):
-                    os.remove(replica_path)
+                # If sync state is incorrect, wipe all replica files and retry once
+                for f in [replica_path, replica_path + "-meta", replica_path + "-wal", replica_path + "-shm"]:
+                    if os.path.exists(f):
+                        try:
+                            os.remove(f)
+                        except Exception:
+                            pass
                 
                 conn = turso_sqlite.connect(
                     replica_path,
@@ -4099,7 +4102,6 @@ def get_db_connection():
                     auth_token=auth_token
                 )
                 conn.sync()
-                conn.row_factory = sqlite3.Row
                 return conn
 
         except ImportError:
@@ -4109,20 +4111,20 @@ def get_db_connection():
             st.error(f"Failed to connect to Turso embedded replica: {e}")
             st.stop()
 
-    # 3. Fallback to Local SQLite database (Only if Turso secrets are removed)
+    # 3. Fallback to Local SQLite database
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     local_db_path = os.path.join(BASE_DIR, "inventory.db")
 
     if not os.path.exists(local_db_path) or os.path.getsize(local_db_path) == 0:
         st.error(
             "🚨 **Database Configuration Error**\n\n"
-            "Turso URL was detected in secrets, but the connection encountered an issue. "
-            "Please check your `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` values in Streamlit settings."
+            "Turso credentials were not detected or failed, and `inventory.db` was not found. "
+            "Please check your Streamlit secrets or local database file."
         )
         st.stop()
 
     conn = sqlite3.connect(local_db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row  # Standard sqlite3 supports row_factory
     return conn
 # ======================================================================================
 #                                    DATABASE
