@@ -3985,7 +3985,6 @@ def get_db_connection():
 
 '''
 # --- DATABASE SETUP (Turso / SQLite Integrated) ---
-# --- DATABASE SETUP (Direct Turso Cloud Connection) ---
 import os
 import sqlite3
 import streamlit as st
@@ -3993,15 +3992,15 @@ import streamlit as st
 @st.cache_resource
 def get_db_connection():
     """
-    Connects directly to Turso cloud database if configured,
-    otherwise falls back to local inventory.db.
+    Dynamically connects to Turso if configured in Streamlit Secrets/Env,
+    otherwise falls back automatically to local inventory.db.
     """
     db_url = None
     auth_token = ""
 
     # 1. Attempt to fetch credentials from Streamlit Secrets or Environment Variables
     try:
-        if hasattr(st, "secrets") and "TURSO_DATABASE_URL" in st.secrets:
+        if "TURSO_DATABASE_URL" in st.secrets:
             db_url = st.secrets["TURSO_DATABASE_URL"]
             auth_token = st.secrets.get("TURSO_AUTH_TOKEN", "")
         else:
@@ -4011,13 +4010,11 @@ def get_db_connection():
         db_url = os.getenv("TURSO_DATABASE_URL")
         auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
 
-    # 2. If valid Turso remote URL exists, connect directly via libsql
+    # 2. If valid Turso remote URL exists, connect via libsql
     if db_url and (str(db_url).startswith("libsql://") or str(db_url).startswith("https://") or str(db_url).startswith("wss://")):
         try:
             import libsql_experimental as turso_sqlite
-            # Direct remote connection (no local replica files needed)
-            conn = turso_sqlite.connect(db_url, auth_token=auth_token)
-            return conn
+            return turso_sqlite.connect(db_url, auth_token=auth_token)
         except ImportError:
             st.error("Please install `libsql-experimental` to connect to Turso. Run: pip install libsql-experimental")
             st.stop()
@@ -4025,7 +4022,7 @@ def get_db_connection():
             st.error(f"Failed to connect to Turso database: {e}")
             st.stop()
 
-    # 3. Fallback to Local SQLite database
+    # 3. Fallback to Local SQLite database (Plug-and-play for local drive E:\Tuanson_App_01)
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     local_db_path = os.path.join(BASE_DIR, "inventory.db")
 
